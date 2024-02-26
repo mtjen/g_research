@@ -54,7 +54,7 @@ DATA black_f;
 RUN;
 
 
-/* white males */
+/* other males */
 DATA other_m;
 	SET nhanes;
 	WHERE sex = "Male" AND ethnicity = "Other";
@@ -152,119 +152,71 @@ DATA group_two;
 RUN;
 
 
-/* statin recommendation breakdown by age, sex, race */
-PROC FREQ DATA = group_one;
-	WHERE sex = "Male" AND ethnicity = "Other";
-	TABLE age * is_rec / out = g1_m_o OUTPCT;
-RUN;
+/* macro to get age distribution by statin recommendation */
+%MACRO get_statin_rec_plot(dataset, sex, ethnicity);
+	PROC FREQ DATA = &dataset NOPRINT;
+		WHERE sex = &sex AND ethnicity = &ethnicity;
+		TABLE age * is_rec / OUT = freq_data OUTPCT;
+	RUN;
+	
+	PROC SGPANEL DATA = freq_data; 
+		PANELBY is_rec / LAYOUT = ROWLATTICE;
+		VBAR age / RESPONSE = pct_row;
+		COLAXIS VALUESROTATE = vertical;
+		REFLINE 50 100 / AXIS = y 
+						LINEATTRS = (COLOR = darkred PATTERN = dash);
+	RUN;
+%MEND;
 
-PROC SGPANEL DATA = g1_m_o; 
-	PANELBY is_rec / LAYOUT = ROWLATTICE;
-	VBAR age / RESPONSE = pct_row;
-	COLAXIS VALUESROTATE = vertical;
-	REFLINE 50 / AXIS = y 
-					LINEATTRS = (COLOR = darkred PATTERN = dash);
-RUN;
+/* all observations */
+%get_statin_rec_plot(group_one, "Male", "Other");   		     /* ~56 */
+%get_statin_rec_plot(group_one, "Female", "Other"); 			 /* ~66 */
+%get_statin_rec_plot(group_one, "Male", "Non-Hispanic Black");   /* ~49 */
+%get_statin_rec_plot(group_one, "Female", "Non-Hispanic Black"); /* ~58 */
 
-
-PROC FREQ DATA = group_one;
-	WHERE sex = "Female" AND ethnicity = "Other";
-	TABLE age * is_rec / out = g1_f_o OUTPCT;
-RUN;
-
-PROC SGPANEL DATA = g1_f_o; 
-	PANELBY is_rec / LAYOUT = ROWLATTICE;
-	VBAR age / RESPONSE = pct_row;
-	COLAXIS VALUESROTATE = vertical;
-	REFLINE 50 / AXIS = y 
-					LINEATTRS = (COLOR = darkred PATTERN = dash);
-RUN;
-
-
-/* very low */
-PROC FREQ DATA = group_one;
-	WHERE sex = "Male" AND ethnicity = "Non-Hispanic Black";
-	TABLE age * is_rec / out = g1_m_b OUTPCT;
-RUN;
-
-PROC SGPANEL DATA = g1_m_b; 
-	PANELBY is_rec / LAYOUT = ROWLATTICE;
-	VBAR age / RESPONSE = pct_row;
-	COLAXIS VALUESROTATE = vertical;
-	REFLINE 50 / AXIS = y 
-					LINEATTRS = (COLOR = darkred PATTERN = dash);
-RUN;
+/* hbp observations */
+%get_statin_rec_plot(group_two, "Male", "Other");   		     /* ~59 */
+%get_statin_rec_plot(group_two, "Female", "Other"); 			 /* ~68 */
+%get_statin_rec_plot(group_two, "Male", "Non-Hispanic Black");   /* ~53 */
+%get_statin_rec_plot(group_two, "Female", "Non-Hispanic Black"); /* ~60 */
 
 
-PROC FREQ DATA = group_one;
-	WHERE sex = "Female" AND ethnicity = "Non-Hispanic Black";
-	TABLE age * is_rec / out = g1_f_b OUTPCT;
-RUN;
+/* macro to get age distribution by subgroup */
+%MACRO get_statin_plot_by_subgroup(dataset, title);
+	/* create subgroups for race and sex */
+	DATA groupData;
+		SET &dataset;
+		
+		LENGTH subgroup $ 20;
+		IF sex = "Male" AND ethnicity = "Other" THEN subgroup = "Other Males";
+		ELSE IF sex = "Female" AND ethnicity = "Other" THEN subgroup = "Other Females";
+		ELSE IF sex = "Male" AND ethnicity = "Non-Hispanic Black" THEN Subgroup = "Black Males";
+		ELSE subgroup = "Black Females";
+	RUN;
+	
+	PROC FREQ DATA = groupData NOPRINT;
+		TABLE subgroup * age * is_rec / OUT = freq_data OUTPCT;
+	RUN;
+	
+	/* only keep data for those that are recommended */
+	DATA recommendedData;
+		SET freq_data;
+		WHERE is_rec = "1";
+	RUN;
+		
+	PROC SGPANEL DATA = recommendedData; 
+		PANELBY subgroup / NOVARNAME;
+		VBAR age / RESPONSE = pct_row;
+		COLAXIS FITPOLICY = staggerthin LABEL = "Age";
+		ROWAXIS LABEL = "% Recommended to Take Statin Medication";
+		TITLE &title;
+		REFLINE 50 100 / AXIS = y 
+						LINEATTRS = (COLOR = red PATTERN = dot);
+	RUN;
+%MEND;
 
-PROC SGPANEL DATA = g1_f_b; 
-	PANELBY is_rec / LAYOUT = ROWLATTICE;
-	VBAR age / RESPONSE = pct_row;
-	COLAXIS VALUESROTATE = vertical;
-	REFLINE 50 / AXIS = y 
-					LINEATTRS = (COLOR = darkred PATTERN = dash);
-RUN;
-
-
-/* statin recommendation breakdown by age - high blood pressure */
-PROC FREQ DATA = group_two;
-	WHERE sex = "Male" AND ethnicity = "Other";
-	TABLE age * is_rec / out = g2_m_o OUTPCT;
-RUN;
-
-PROC SGPANEL DATA = g2_m_o; 
-	PANELBY is_rec / LAYOUT = ROWLATTICE;
-	VBAR age / RESPONSE = pct_row;
-	COLAXIS VALUESROTATE = vertical;
-	REFLINE 50 / AXIS = y 
-					LINEATTRS = (COLOR = darkred PATTERN = dash);
-RUN;
-
-
-PROC FREQ DATA = group_two;
-	WHERE sex = "Female" AND ethnicity = "Other";
-	TABLE age * is_rec / out = g2_f_o OUTPCT;
-RUN;
-
-PROC SGPANEL DATA = g2_f_o; 
-	PANELBY is_rec / LAYOUT = ROWLATTICE;
-	VBAR age / RESPONSE = pct_row;
-	COLAXIS VALUESROTATE = vertical;
-	REFLINE 50 / AXIS = y 
-					LINEATTRS = (COLOR = darkred PATTERN = dash);
-RUN;
-
-
-PROC FREQ DATA = group_two;
-	WHERE sex = "Male" AND ethnicity = "Non-Hispanic Black";
-	TABLE age * is_rec / out = g2_m_b OUTPCT;
-RUN;
-
-PROC SGPANEL DATA = g2_m_b; 
-	PANELBY is_rec / LAYOUT = ROWLATTICE;
-	VBAR age / RESPONSE = pct_row;
-	COLAXIS VALUESROTATE = vertical;
-	REFLINE 50 / AXIS = y 
-					LINEATTRS = (COLOR = darkred PATTERN = dash);
-RUN;
-
-
-PROC FREQ DATA = group_two;
-	WHERE sex = "Female" AND ethnicity = "Non-Hispanic Black";
-	TABLE age * is_rec / out = g2_f_b OUTPCT;
-RUN;
-
-PROC SGPANEL DATA = g2_f_b; 
-	PANELBY is_rec / LAYOUT = ROWLATTICE;
-	VBAR age / RESPONSE = pct_row;
-	COLAXIS VALUESROTATE = vertical;
-	REFLINE 50 / AXIS = y 
-					LINEATTRS = (COLOR = darkred PATTERN = dash);
-RUN;
+%get_statin_plot_by_subgroup(group_one, "Statin Recommendation by Age for All Observations")
+%get_statin_plot_by_subgroup(group_two, "Statin Recommendation by Age for Observations with HBP")
 
 
 /*******************************************************/
@@ -299,6 +251,7 @@ PROC LOGISTIC DATA = group_two;
 RUN;
 
 
+/* predictors with high odds ratios */
 PROC FREQ DATA = group_one;
 	TABLE has_hype_med_char * is_rec
 			is_diabetic_char * is_rec
@@ -312,99 +265,51 @@ PROC FREQ DATA = group_two;
 RUN;
 
 
-/* train-test split - all */
-PROC SORT DATA = group_one OUT = group_one_sorted;
-	BY ethnicity;
-RUN;
-
-PROC SURVEYSELECT DATA = group_one_sorted 
-					RATE = 0.7 OUT = group_one_split 
-					SEED = 123 OUTALL;
-	STRATA ethnicity;
-RUN;
-
-PROC FREQ DATA = group_one_split; 
-	TABLE ethnicity * selected;
-RUN;
-
-DATA g1_train g1_test; 
-	SET group_one_split; 
-	IF selected = 1 THEN OUTPUT g1_train; 
-	ELSE OUTPUT g1_test; 
-	DROP selected;
-RUN;
-
-
-PROC LOGISTIC DATA = g1_train;
-        CLASS ethnicity (REF = "Other")
-        		has_hype_med_char (REF = "0") 
-                is_diabetic_char (REF = "0")
-                does_smoke_char (REF = "0") / PARAM = REFERENCE;
-        MODEL is_rec (EVENT = "1") = 
-        		age ethnicity sbp high_chol total_chol 
-        		has_hype_med_char is_diabetic_char 
-        		does_smoke_char / EXPB;
-        SCORE DATA = g1_test OUT = g1_results;
-RUN;
-
-DATA g1_results_data;
-	SET g1_results;
-	RENAME i_is_rec = predicted_val
-			P_0 = prob_0
-			P_1 = prob_1;
-	DROP SelectionProb SamplingWeight f_is_rec;
-RUN;
-
-/* 89.28% */
-PROC FREQ DATA = g1_results_data;
-	TABLE is_rec * predicted_val / nocol norow;
-RUN;
+/* macro to train/test statin recommendation model */
+%MACRO get_statin_rec_model_results(dataset);
+	PROC SORT DATA = &dataset OUT = sorted_data;
+		BY ethnicity;
+	RUN;
+	
+	PROC SURVEYSELECT DATA = sorted_data 
+						RATE = 0.7 OUT = split_data 
+						SEED = 123 OUTALL NOPRINT;
+		STRATA ethnicity;
+	RUN;
+	
+	DATA train_data test_data; 
+		SET split_data; 
+		IF selected = 1 THEN OUTPUT train_data; 
+		ELSE OUTPUT test_data; 
+		DROP selected;
+	RUN;
+	
+	PROC LOGISTIC DATA = train_data NOPRINT;
+	        CLASS ethnicity (REF = "Other")
+	        		has_hype_med_char (REF = "0") 
+	                is_diabetic_char (REF = "0")
+	                does_smoke_char (REF = "0") / PARAM = REFERENCE;
+	        MODEL is_rec (EVENT = "1") = 
+	        		age ethnicity sbp high_chol total_chol 
+	        		has_hype_med_char is_diabetic_char 
+	        		does_smoke_char / EXPB;
+	        SCORE DATA = test_data OUT = model_results;
+	RUN;
+	
+	DATA result_data;
+		SET model_results;
+		RENAME i_is_rec = predicted_val
+				P_0 = prob_0
+				P_1 = prob_1;
+		DROP SelectionProb SamplingWeight f_is_rec;
+	RUN;
+	
+	PROC FREQ DATA = result_data;
+		TABLE is_rec * predicted_val / nocol norow;
+	RUN;
+%MEND;
 
 
-/* train-test split - hbp */
-PROC SORT DATA = group_two OUT = group_two_sorted;
-	BY ethnicity;
-RUN;
+%get_statin_rec_model_results(group_one); /* 89.28% */
+%get_statin_rec_model_results(group_two); /* 88.09% */
 
-PROC SURVEYSELECT DATA = group_two_sorted 
-					RATE = 0.7 OUT = group_two_split 
-					SEED = 123 OUTALL;
-	STRATA ethnicity;
-RUN;
-
-PROC FREQ DATA = group_two_split; 
-	TABLE ethnicity * selected;
-RUN;
-
-DATA g2_train g2_test; 
-	SET group_two_split; 
-	IF selected = 1 THEN OUTPUT g2_train; 
-	ELSE OUTPUT g2_test; 
-	DROP selected;
-RUN;
-
-
-PROC LOGISTIC DATA = g2_train;
-        CLASS ethnicity (REF = "Other")
-        		has_hype_med_char (REF = "0") 
-                is_diabetic_char (REF = "0")
-                does_smoke_char (REF = "0") / PARAM = REFERENCE;
-        MODEL is_rec (EVENT = "1") = 
-        		age ethnicity sbp high_chol total_chol 
-        		has_hype_med_char is_diabetic_char 
-        		does_smoke_char / EXPB;
-        SCORE DATA = g2_test OUT = g2_results;
-RUN;
-
-DATA g2_results_data;
-	SET g2_results;
-	RENAME i_is_rec = predicted_val
-			P_0 = prob_0
-			P_1 = prob_1;
-	DROP SelectionProb SamplingWeight f_is_rec;
-RUN;
-
-/* 88.09% */
-PROC FREQ DATA = g2_results_data;
-	TABLE is_rec * predicted_val / nocol norow;
-RUN;
