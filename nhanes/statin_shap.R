@@ -42,7 +42,7 @@ all_shap_long <- shap.prep(xgb_model = all_mod, X_train = all_data_matrix)
 
 # visualize
 shap.plot.summary(all_shap_long)     # shapley values plot
-xgb.plot.tree(model = all_mod)       # decision tree
+# xgb.plot.tree(model = all_mod)     # decision tree - useless w/ all the variables
 
 # force plot for all observations
 force_shap_all <- shap.values(xgb_model = all_mod, X_train = all_data_matrix)
@@ -118,7 +118,7 @@ hbp_shap_long <- shap.prep(xgb_model = hbp_mod, X_train = hbp_data_matrix)
 
 # visualize
 shap.plot.summary(hbp_shap_long)     # shapley values plot
-xgb.plot.tree(model = hbp_mod)       # decision tree
+# xgb.plot.tree(model = hbp_mod)     # decision tree - useless w/ all the variables
 
 # force plot for all observations
 force_shap_hbp <- shap.values(xgb_model = hbp_mod, X_train = hbp_data_matrix)
@@ -162,6 +162,47 @@ hbp_avg_b_f_shp <- shapviz(hbp_mod, X_pred = as.matrix(hbp_avg_b_f), X = hbp_avg
 sv_waterfall(hbp_avg_b_f_shp, row_id = 1)
 sv_force(hbp_avg_b_f_shp, row_id = 1)
 
+
+
+############################################################
+######
+###### SHAPLEY PLOTS
+######
+############################################################
+
+# function to create shapley plots (sex: Male or Female, ethnicity: Black or Other)
+create_shapley_plot <- function(dataset, sex, ethnicity) {
+  is_male_indic <- ifelse(sex == "Male", 1, 0)
+  is_black_indic <- ifelse(ethnicity == "Black", 1, 0)
+  
+  filtered_data <- dataset |> filter(is_male == is_male_indic, 
+                                     is_black == is_black_indic) |>
+    select(-is_male, -is_black)
+  
+  # make data (minus outcome) into matrix object
+  dataset_matrix <- as.matrix(filtered_data |> select(-is_rec))
+  
+  # create xgboost model
+  xgMod <- xgboost(data = dataset_matrix, label = filtered_data$is_rec, 
+                   nrounds = 1, objective = "binary:logistic")
+  
+  # get shapley values
+  shap_long <- shap.prep(xgb_model = xgMod, X_train = dataset_matrix)
+  
+  # plot shapley values
+  return(shap.plot.summary(shap_long))
+}
+
+
+create_shapley_plot(all_data_numeric, "Male", "Other")
+create_shapley_plot(all_data_numeric, "Male", "Black")
+create_shapley_plot(all_data_numeric, "Female", "Other")
+create_shapley_plot(all_data_numeric, "Female", "Black")
+
+create_shapley_plot(hbp_data_numeric, "Male", "Other")
+create_shapley_plot(hbp_data_numeric, "Male", "Black")
+create_shapley_plot(hbp_data_numeric, "Female", "Other")
+create_shapley_plot(hbp_data_numeric, "Female", "Black")
 
 
 ############################################################
