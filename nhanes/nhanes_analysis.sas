@@ -5,7 +5,8 @@ DATA nhanes;
 	SET nh_path.nhanes_cleaned_11 nh_path.nhanes_cleaned_13
 		nh_path.nhanes_cleaned_15 nh_path.nhanes_cleaned_17;
 	
-	IF ethnicity ^= "Non-Hispanic Black" THEN ethnicity = "Other";
+	IF ethnicity = "Non-Hispanic Black" THEN ethnicity_binary = "Black";
+	ELSE ethnicity_binary = "Other";
 RUN;
 
 
@@ -18,7 +19,7 @@ RUN;
 /* other females */
 DATA other_f;
 	SET nhanes;
-	WHERE sex = "Female" AND ethnicity = "Other";
+	WHERE sex = "Female" AND ethnicity_binary = "Other";
 	
 	ln_risk = -29.799 * log(age) - 
 				13.578 * log(high_chol) + 
@@ -37,7 +38,7 @@ RUN;
 /* black females */
 DATA black_f;
 	SET nhanes;
-	WHERE sex = "Female" AND ethnicity = "Non-Hispanic Black";
+	WHERE sex = "Female" AND ethnicity_binary = "Black";
 	
 	ln_risk = 17.1141 * log(age) + 
 				-18.9196 * log(high_chol) + 
@@ -57,7 +58,7 @@ RUN;
 /* other males */
 DATA other_m;
 	SET nhanes;
-	WHERE sex = "Male" AND ethnicity = "Other";
+	WHERE sex = "Male" AND ethnicity_binary = "Other";
 	
 	ln_risk = 12.344 * log(age) + 
 				-7.990 * log(high_chol) + 
@@ -77,7 +78,7 @@ RUN;
 /* black males */
 DATA black_m;
 	SET nhanes;
-	WHERE sex = "Male" AND ethnicity = "Non-Hispanic Black";
+	WHERE sex = "Male" AND ethnicity_binary = "Black";
 	
 	ln_risk = 2.469 * log(age) + 
 				-0.307 * log(high_chol) + 
@@ -153,9 +154,9 @@ RUN;
 
 
 /* macro to get age distribution by statin recommendation */
-%MACRO get_statin_rec_plot(dataset, sex, ethnicity);
+%MACRO get_statin_rec_plot(dataset, sex, ethnicity_binary);
 	PROC FREQ DATA = &dataset NOPRINT;
-		WHERE sex = &sex AND ethnicity = &ethnicity;
+		WHERE sex = &sex AND ethnicity_binary = &ethnicity_binary;
 		TABLE age * is_rec / OUT = freq_data OUTPCT;
 	RUN;
 	
@@ -169,16 +170,16 @@ RUN;
 %MEND;
 
 /* all observations */
-%get_statin_rec_plot(group_one, "Male", "Other");   		     /* ~56 */
-%get_statin_rec_plot(group_one, "Female", "Other"); 			 /* ~66 */
-%get_statin_rec_plot(group_one, "Male", "Non-Hispanic Black");   /* ~49 */
-%get_statin_rec_plot(group_one, "Female", "Non-Hispanic Black"); /* ~58 */
+%get_statin_rec_plot(group_one, "Male", "Other");   /* ~56 */
+%get_statin_rec_plot(group_one, "Female", "Other"); /* ~66 */
+%get_statin_rec_plot(group_one, "Male", "Black");   /* ~49 */
+%get_statin_rec_plot(group_one, "Female", "Black"); /* ~58 */
 
 /* hbp observations */
-%get_statin_rec_plot(group_two, "Male", "Other");   		     /* ~59 */
-%get_statin_rec_plot(group_two, "Female", "Other"); 			 /* ~68 */
-%get_statin_rec_plot(group_two, "Male", "Non-Hispanic Black");   /* ~53 */
-%get_statin_rec_plot(group_two, "Female", "Non-Hispanic Black"); /* ~60 */
+%get_statin_rec_plot(group_two, "Male", "Other");   /* ~59 */
+%get_statin_rec_plot(group_two, "Female", "Other"); /* ~68 */
+%get_statin_rec_plot(group_two, "Male", "Black");   /* ~53 */
+%get_statin_rec_plot(group_two, "Female", "Black"); /* ~60 */
 
 
 /* macro to get age distribution by subgroup */
@@ -188,9 +189,9 @@ RUN;
 		SET &dataset;
 		
 		LENGTH subgroup $ 20;
-		IF sex = "Male" AND ethnicity = "Other" THEN subgroup = "Other Males";
-		ELSE IF sex = "Female" AND ethnicity = "Other" THEN subgroup = "Other Females";
-		ELSE IF sex = "Male" AND ethnicity = "Non-Hispanic Black" THEN Subgroup = "Black Males";
+		IF sex = "Male" AND ethnicity_binary = "Other" THEN subgroup = "Other Males";
+		ELSE IF sex = "Female" AND ethnicity_binary = "Other" THEN subgroup = "Other Females";
+		ELSE IF sex = "Male" AND ethnicity_binary = "Black" THEN Subgroup = "Black Males";
 		ELSE subgroup = "Black Females";
 	RUN;
 	
@@ -221,6 +222,65 @@ RUN;
 
 /*******************************************************/
 /*****/
+/*****	TABLE 1 */
+/*****/
+/********************************************************/
+
+PROC SORT DATA = group_one;
+	BY seqn;
+RUN;
+
+PROC SORT DATA = group_two;
+	BY seqn;
+RUN;
+
+DATA merged_groups;
+	MERGE group_one (IN=inOne RENAME=(is_rec=all_rec)) 
+			group_two(RENAME=(is_rec=hbp_rec));
+	BY seqn;
+	IF inOne;
+RUN;
+
+
+/* recommendation distribution check */
+PROC FREQ DATA = merged_groups;
+	TABLE hbp_rec;
+RUN;
+
+PROC FREQ DATA = group_two;
+	TABLE is_rec;
+RUN;
+
+
+/* data for table 1 */
+DATA table_one_data;
+	SET merged_groups;
+	
+	IF age < 50 THEN age_cat = "40-49";
+	ELSE IF age >= 50 AND age < 60 THEN age_cat = "50-59";
+	ELSE IF age >= 60 AND age < 70 THEN age_cat = "60-69";
+	ELSE age_cat = "70-79";
+RUN;
+
+
+/* create table 1 */
+PROC TABULATE DATA = table_one_data;
+	CLASS age_cat ethnicity has_hype_med_char 
+			is_diabetic_char does_smoke_char 
+			all_rec hbp_rec;
+	VAR sbp high_chol total_chol;
+	TABLE age_cat="Age Category" ethnicity="Ethnicity" 
+			has_hype_med_char="Does Take Hypertension Medication" 
+			is_diabetic_char="Is Diabetic" 
+			does_smoke_char="Does Smoke" 
+			sbp="Systolic Blood Pressure"*mean 
+			high_chol*mean total_chol*mean, 
+			all_rec hbp_rec ;
+RUN;
+
+
+/*******************************************************/
+/*****/
 /*****	DATA MODELING */
 /*****/
 /********************************************************/
@@ -228,24 +288,24 @@ RUN;
 /* preliminary models */
 /* C = 97.2 */
 PROC LOGISTIC DATA = group_one;
-        CLASS ethnicity (REF = "Other")
+        CLASS ethnicity_binary (REF = "Other")
         		has_hype_med_char (REF = "0") 
                 is_diabetic_char (REF = "0")
                 does_smoke_char (REF = "0") / PARAM = REFERENCE;
         MODEL is_rec (EVENT = "1") = 
-        		age ethnicity sbp high_chol total_chol 
+        		age ethnicity_binary sbp high_chol total_chol 
         		has_hype_med_char is_diabetic_char 
         		does_smoke_char / EXPB;
 RUN;
 
 /* C = 96.8 */
 PROC LOGISTIC DATA = group_two;
-        CLASS ethnicity (REF = "Other")
+        CLASS ethnicity_binary (REF = "Other")
         		has_hype_med_char (REF = "0") 
                 is_diabetic_char (REF = "0")
                 does_smoke_char (REF = "0") / PARAM = REFERENCE;
         MODEL is_rec (EVENT = "1") = 
-        		age ethnicity sbp high_chol total_chol 
+        		age ethnicity_binary sbp high_chol total_chol 
         		has_hype_med_char is_diabetic_char 
         		does_smoke_char / EXPB;
 RUN;
@@ -268,13 +328,13 @@ RUN;
 /* macro to train/test statin recommendation model */
 %MACRO get_statin_rec_model_results(dataset);
 	PROC SORT DATA = &dataset OUT = sorted_data;
-		BY ethnicity;
+		BY ethnicity_binary;
 	RUN;
 	
 	PROC SURVEYSELECT DATA = sorted_data 
 						RATE = 0.7 OUT = split_data 
 						SEED = 123 OUTALL NOPRINT;
-		STRATA ethnicity;
+		STRATA ethnicity_binary;
 	RUN;
 	
 	DATA train_data test_data; 
@@ -285,12 +345,12 @@ RUN;
 	RUN;
 	
 	PROC LOGISTIC DATA = train_data NOPRINT;
-	        CLASS ethnicity (REF = "Other")
+	        CLASS ethnicity_binary (REF = "Other")
 	        		has_hype_med_char (REF = "0") 
 	                is_diabetic_char (REF = "0")
 	                does_smoke_char (REF = "0") / PARAM = REFERENCE;
 	        MODEL is_rec (EVENT = "1") = 
-	        		age ethnicity sbp high_chol total_chol 
+	        		age ethnicity_binary sbp high_chol total_chol 
 	        		has_hype_med_char is_diabetic_char 
 	        		does_smoke_char / EXPB;
 	        SCORE DATA = test_data OUT = model_results;
