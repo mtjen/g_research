@@ -4,6 +4,8 @@ library(haven)
 library(SHAPforxgboost)
 library(shapviz)
 library(xgboost)
+library(patchwork)
+library(ggplot2)
 
 
 # import data
@@ -28,7 +30,8 @@ all_data_numeric <- all_data |>
          is_black = case_when(ethnicity == "Non-Hispanic Black" ~ 1,
                               TRUE ~ 0)) |>
   mutate(is_rec = as.numeric(is_rec)) |>
-  select(-sex, -ethnicity)
+  select(-sex, -ethnicity) |>
+  rename(hdl = high_chol)
 
 # make data (minus outcome) into matrix object
 all_data_matrix <- as.matrix(all_data_numeric |> select(-is_rec))
@@ -45,7 +48,7 @@ shap.plot.summary(all_shap_long)     # shapley values plot
 # xgb.plot.tree(model = all_mod)     # decision tree - useless w/ all the variables
 
 # force plot for all observations
-force_shap_all <- shap.values(xgb_model = all_mod, X_train = all_data_matrix)
+force_shap_all <- shap.values(xgb_model = all_mod, X_train = all_data_matrix) # in order
 prepped_force_all <- shap.prep.stack.data(shap_contrib = force_shap_all$shap_score)
 shap.plot.force_plot(prepped_force_all)
 
@@ -104,7 +107,8 @@ hbp_data_numeric <- hbp_data |>
          is_black = case_when(ethnicity == "Non-Hispanic Black" ~ 1,
                               TRUE ~ 0)) |>
   mutate(is_rec = as.numeric(is_rec)) |>
-  select(-sex, -ethnicity)
+  select(-sex, -ethnicity) |>
+  rename(hdl = high_chol)
 
 # make data (minus outcome) into matrix object
 hbp_data_matrix <- as.matrix(hbp_data_numeric |> select(-is_rec))
@@ -203,6 +207,92 @@ create_shapley_plot(hbp_data_numeric, "Male", "Other")
 create_shapley_plot(hbp_data_numeric, "Male", "Black")
 create_shapley_plot(hbp_data_numeric, "Female", "Other")
 create_shapley_plot(hbp_data_numeric, "Female", "Black")
+
+
+
+############################################################
+######
+###### FORCE PLOTS BY RIKS SCORE
+######
+############################################################
+
+get_force_plot_by_risk <- function(dataset, is_male_indic, is_black_indic) {
+  # make input dataset numeric
+  data_numeric <- dataset |>
+    select(age, sex, ethnicity, sbp, dbp, high_chol, 
+           total_chol, has_hype_med, is_diabetic, 
+           does_smoke, is_rec, risk_score) |>
+    mutate(is_male = case_when(sex == "Male" ~ 1,
+                               TRUE ~ 0),
+           is_black = case_when(ethnicity == "Non-Hispanic Black" ~ 1,
+                                TRUE ~ 0)) |>
+    mutate(is_rec = as.numeric(is_rec)) |>
+    filter(is_male == is_male_indic, is_black == is_black_indic) |> 
+    select(-sex, -ethnicity, -is_male, -is_black) |>
+    rename(hdl = high_chol)
+  
+  # make data (minus outcome) into matrix object
+  data_matrix <- as.matrix(data_numeric |> select(-is_rec, -risk_score))
+  
+  # create xgboost model
+  mod <- xgboost(data = data_matrix, label = data_numeric$is_rec, 
+                     nrounds = 1, objective = "binary:logistic")
+  
+  # get shapley values
+  force_shap <- shap.values(xgb_model = mod, X_train = data_matrix) 
+  prepped_force <- shap.prep.stack.data(shap_contrib = force_shap$shap_score, 
+                                            top_n = 5)
+  
+  # prep data to sort
+  prepped_data <- data_numeric |> mutate(ID = 1:n()) |> 
+    rename(sort_var = risk_score) |> select(ID, sort_var)
+  
+  # merge by ID and sort by risk score
+  data_merged <- merge(prepped_force, prepped_data, by = "ID")
+  sorted_data <- data_merged[order(sort_var),] 
+  
+  # remove variables so they aren't included in force plot
+  filtered_data <- sorted_data |> select(-sorted_id, -sort_var)
+  
+  # reset ID values so plots are in sorted order
+  reset_index_data <- filtered_data |> mutate(ID = 1:n())
+  
+  plot <- shap.plot.force_plot(reset_index_data, id = "ID", zoom_in = FALSE) + 
+            xlab("Observation Index") + ylim(-1, 1)
+  
+  return(plot)
+}
+
+
+all_m_o <- get_force_plot_by_risk(all_data, 1, 0) + ylab("SHAP Values (All)")
+hbp_m_o <- get_force_plot_by_risk(hbp_data, 1, 0) + ylab("SHAP Values (HBP)")
+other_males_by_risk <- all_m_o / hbp_m_o + 
+                        plot_annotation('Other Males by Risk Score', 
+                        theme = theme(plot.title = element_text(hjust = 0.5)))
+
+all_f_o <- get_force_plot_by_risk(all_data, 0, 0) + ylab("SHAP Values (All)")
+hbp_f_o <- get_force_plot_by_risk(hbp_data, 0, 0) + ylab("SHAP Values (HBP)")
+other_females_by_risk <- all_f_o / hbp_f_o + 
+                          plot_annotation('Other Females by Risk Score', 
+                          theme = theme(plot.title = element_text(hjust = 0.5)))
+
+all_m_b <- get_force_plot_by_risk(all_data, 1, 1) + ylab("SHAP Values (All)")
+hbp_m_b <- get_force_plot_by_risk(hbp_data, 1, 1) + ylab("SHAP Values (HBP)")
+black_males_by_risk <- all_m_b / hbp_m_b + 
+                        plot_annotation('Black Males by Risk Score', 
+                        theme = theme(plot.title = element_text(hjust = 0.5)))
+
+all_f_b <- get_force_plot_by_risk(all_data, 0, 1) + ylab("SHAP Values (All)")
+hbp_f_b <- get_force_plot_by_risk(hbp_data, 0, 1) + ylab("SHAP Values (HBP)")
+black_females_by_risk <- all_f_b / hbp_f_b + 
+                          plot_annotation('Black Females by Risk Score', 
+                          theme = theme(plot.title = element_text(hjust = 0.5)))
+
+other_males_by_risk
+other_females_by_risk
+black_males_by_risk
+black_females_by_risk
+
 
 
 ############################################################
