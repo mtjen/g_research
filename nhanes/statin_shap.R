@@ -216,7 +216,7 @@ create_shapley_plot(hbp_data_numeric, "Female", "Black")
 ######
 ############################################################
 
-get_force_plot_by_risk <- function(dataset, is_male_indic, is_black_indic) {
+get_force_plot_by_risk <- function(dataset, is_male_indic, is_black_indic, is_hbp_data) {
   # make input dataset numeric
   data_numeric <- dataset |>
     select(age, sex, ethnicity, sbp, dbp, high_chol, 
@@ -257,33 +257,43 @@ get_force_plot_by_risk <- function(dataset, is_male_indic, is_black_indic) {
   # reset ID values so plots are in sorted order
   reset_index_data <- filtered_data |> mutate(ID = 1:n())
   
+  # get index cutoff for over/under threshold
+  temp <- data_numeric[order(data_numeric$risk_score),]
+  if (is_hbp_data == 0) {
+    index_val <- min(which(temp$risk_score >= 0.075))
+  }
+  else {
+    index_val <- min(which(temp$risk_score >= 0.010))
+  }
+  
   plot <- shap.plot.force_plot(reset_index_data, id = "ID", zoom_in = FALSE) + 
-            xlab("Observation Index") + ylim(-1, 1)
+            xlab("Observation Index") + ylim(-1, 1) + 
+            geom_vline(xintercept = index_val, linetype="dashed", color = "red")
   
   return(plot)
 }
 
 
-all_m_o <- get_force_plot_by_risk(all_data, 1, 0) + ylab("SHAP Values (All)")
-hbp_m_o <- get_force_plot_by_risk(hbp_data, 1, 0) + ylab("SHAP Values (HBP)")
+all_m_o <- get_force_plot_by_risk(all_data, 1, 0, 0) + ylab("SHAP Values (All)")
+hbp_m_o <- get_force_plot_by_risk(hbp_data, 1, 0, 1) + ylab("SHAP Values (HBP)")
 other_males_by_risk <- all_m_o / hbp_m_o + 
                         plot_annotation('Other Males by Risk Score', 
                         theme = theme(plot.title = element_text(hjust = 0.5)))
 
-all_f_o <- get_force_plot_by_risk(all_data, 0, 0) + ylab("SHAP Values (All)")
-hbp_f_o <- get_force_plot_by_risk(hbp_data, 0, 0) + ylab("SHAP Values (HBP)")
+all_f_o <- get_force_plot_by_risk(all_data, 0, 0, 0) + ylab("SHAP Values (All)")
+hbp_f_o <- get_force_plot_by_risk(hbp_data, 0, 0, 1) + ylab("SHAP Values (HBP)")
 other_females_by_risk <- all_f_o / hbp_f_o + 
                           plot_annotation('Other Females by Risk Score', 
                           theme = theme(plot.title = element_text(hjust = 0.5)))
 
-all_m_b <- get_force_plot_by_risk(all_data, 1, 1) + ylab("SHAP Values (All)")
-hbp_m_b <- get_force_plot_by_risk(hbp_data, 1, 1) + ylab("SHAP Values (HBP)")
+all_m_b <- get_force_plot_by_risk(all_data, 1, 1, 0) + ylab("SHAP Values (All)")
+hbp_m_b <- get_force_plot_by_risk(hbp_data, 1, 1, 1) + ylab("SHAP Values (HBP)")
 black_males_by_risk <- all_m_b / hbp_m_b + 
                         plot_annotation('Black Males by Risk Score', 
                         theme = theme(plot.title = element_text(hjust = 0.5)))
 
-all_f_b <- get_force_plot_by_risk(all_data, 0, 1) + ylab("SHAP Values (All)")
-hbp_f_b <- get_force_plot_by_risk(hbp_data, 0, 1) + ylab("SHAP Values (HBP)")
+all_f_b <- get_force_plot_by_risk(all_data, 0, 1, 0) + ylab("SHAP Values (All)")
+hbp_f_b <- get_force_plot_by_risk(hbp_data, 0, 1, 1) + ylab("SHAP Values (HBP)")
 black_females_by_risk <- all_f_b / hbp_f_b + 
                           plot_annotation('Black Females by Risk Score', 
                           theme = theme(plot.title = element_text(hjust = 0.5)))
@@ -292,6 +302,18 @@ other_males_by_risk
 other_females_by_risk
 black_males_by_risk
 black_females_by_risk
+
+
+# verify correct indices in plots
+temp <- all_data |> filter(ethnicity == "Non-Hispanic Black" & sex == "Male")
+temp <- temp[order(temp$risk_score),]
+min(which(temp$risk_score >= 0.075))
+
+temp <- hbp_data |> filter(ethnicity == "Non-Hispanic Black" & sex == "Male")
+temp <- temp[order(temp$risk_score),]
+min(which(temp$risk_score >= 0.010))
+
+
 
 
 
